@@ -17,14 +17,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Cari folder project Android
+      - name: Cari project Android (folder atau zip)
         id: locate
         run: |
-          GRADLE_FILE=$(find . \( -name node_modules -o -name .git \) -prune -o -name settings.gradle -print | head -n 1)
+          find_project() {
+            find "$1" \( -name node_modules -o -name .git \) -prune -o -name settings.gradle -print | head -n 1
+          }
+
+          # 1. Cek apakah folder project sudah ada di repo
+          GRADLE_FILE=$(find_project .)
+
+          # 2. Kalau belum, cari zip di repo yang berisi settings.gradle, lalu ekstrak
           if [ -z "$GRADLE_FILE" ]; then
-            echo "::error::settings.gradle tidak ditemukan di repo. Pastikan folder android/ sudah ter-upload."
+            for z in $(find . -name "*.zip" -not -path "./.git/*"); do
+              if unzip -l "$z" | grep "settings.gradle$" > /dev/null; then
+                echo "Mengekstrak $z"
+                rm -rf build-src
+                mkdir build-src
+                unzip -q "$z" -d build-src
+                GRADLE_FILE=$(find_project build-src)
+                break
+              fi
+            done
+          fi
+
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "::error::Project Android tidak ditemukan. Upload zip project (yang berisi settings.gradle) ke root repo."
             exit 1
           fi
+
           PROJECT_DIR=$(dirname "$GRADLE_FILE")
           PROJECT_DIR="${PROJECT_DIR#./}"
           echo "Project Android ditemukan di: $PROJECT_DIR"
